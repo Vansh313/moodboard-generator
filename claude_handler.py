@@ -59,7 +59,7 @@ Generate a complete moodboard content package. Return ONLY a valid JSON object w
 IMPORTANT for image_prompts: Replace all [placeholders] with actual specific details from the project. Each prompt must be a complete, detailed image generation prompt ready to send to an AI image generator. Make them vivid and specific."""
 
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}]
     )
