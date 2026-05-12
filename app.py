@@ -38,7 +38,7 @@ def generate_moodboard():
             return jsonify({"error": "Missing designer_name or design_style"}), 400
 
         content = generate_moodboard_content(form)
-        image_paths = generate_images(content["image_prompts"])
+        image_paths = generate_images(content["image_prompts"], form)
         filename = f"moodboard_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_DIR, filename)
         build_moodboard_pdf(form, content, image_paths, output_path)
