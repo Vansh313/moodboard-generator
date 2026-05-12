@@ -249,7 +249,7 @@ def draw_image_grid(c, image_paths, content):
                       font="Helvetica", size=7, color=LIGHT_GREY, align="center")
 
         # Caption bar
-        c.setFillColor(HexColor("#00000088"))
+        c.setFillColor(HexColor("#111111"))
         c.rect(x, y, img_w, 7*mm, fill=1, stroke=0)
         if i < len(captions):
             draw_text(c, captions[i], x + 2*mm, y + 2*mm,
