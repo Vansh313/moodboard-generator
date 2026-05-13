@@ -9,6 +9,32 @@ app = Flask(__name__)
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+def extract_logo_url(raw):
+    """Extract direct URL from Tally file upload field."""
+    if not raw:
+        return ""
+    if isinstance(raw, str):
+        # Already a URL
+        if raw.startswith("http"):
+            return raw
+        # Try parsing as JSON array
+        try:
+            import json
+            parsed = json.loads(raw)
+            if isinstance(parsed, list) and parsed:
+                return parsed[0].get("url", "")
+        except:
+            pass
+    if isinstance(raw, list) and raw:
+        item = raw[0]
+        if isinstance(item, dict):
+            return item.get("url", "")
+        if isinstance(item, str):
+            return item
+    if isinstance(raw, dict):
+        return raw.get("url", "")
+    return ""
+
 @app.route("/generate-moodboard", methods=["POST"])
 def generate_moodboard():
     try:
@@ -16,27 +42,24 @@ def generate_moodboard():
         if "client_name" not in data:
             return jsonify({"error": "Missing required fields"}), 400
 
+        logo_raw = data.get("logo_url", "") or data.get("designer_logo", "")
+        logo_url = extract_logo_url(logo_raw)
+
         form = {
             "client_name":    data.get("client_name", "Client"),
             "project_name":   data.get("project_name", "Project"),
-            "designer_name":  data.get("designer_name", "") or data.get("Designer Name", "Designer"),
+            "designer_name":  data.get("designer_name", "Designer"),
             "designer_email": data.get("designer_email", ""),
             "client_email":   data.get("client_email", ""),
             "room_types":     data.get("room_types", ""),
-            "design_style":   data.get("design_style", "") or data.get("Design Style", "Modern"),
+            "design_style":   data.get("design_style", "Modern"),
             "color_prefs":    data.get("color_prefs", ""),
             "materials":      data.get("materials", ""),
             "mood_feel":      data.get("mood_feel", ""),
             "budget_range":   data.get("budget_range", ""),
-            "logo_url":       data.get("logo_url", ""),
+            "logo_url":       logo_url,
             "product_links":  data.get("product_links", ""),
         }
-
-        # Use fallbacks so we never fail on missing fields
-        if not form["designer_name"]:
-            form["designer_name"] = "Designer"
-        if not form["design_style"]:
-            form["design_style"] = "Modern"
 
         # Parse product links
         product_urls = []
