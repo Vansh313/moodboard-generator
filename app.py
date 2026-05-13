@@ -17,13 +17,13 @@ def generate_moodboard():
             return jsonify({"error": "Missing required fields"}), 400
 
         form = {
-            "client_name":    data.get("client_name", ""),
-            "project_name":   data.get("project_name", ""),
-            "designer_name":  data.get("designer_name", ""),
+            "client_name":    data.get("client_name", "Client"),
+            "project_name":   data.get("project_name", "Project"),
+            "designer_name":  data.get("designer_name", "") or data.get("Designer Name", "Designer"),
             "designer_email": data.get("designer_email", ""),
             "client_email":   data.get("client_email", ""),
             "room_types":     data.get("room_types", ""),
-            "design_style":   data.get("design_style", ""),
+            "design_style":   data.get("design_style", "") or data.get("Design Style", "Modern"),
             "color_prefs":    data.get("color_prefs", ""),
             "materials":      data.get("materials", ""),
             "mood_feel":      data.get("mood_feel", ""),
@@ -32,23 +32,24 @@ def generate_moodboard():
             "product_links":  data.get("product_links", ""),
         }
 
-        if not form["designer_name"] and not form["design_style"]:
-            return jsonify({"error": "Missing designer_name or design_style"}), 400
+        # Use fallbacks so we never fail on missing fields
+        if not form["designer_name"]:
+            form["designer_name"] = "Designer"
+        if not form["design_style"]:
+            form["design_style"] = "Modern"
 
         # Parse product links
         product_urls = []
         if form["product_links"]:
-            product_urls = [u.strip() for u in form["product_links"].split("\n") if u.strip().startswith("http")]
+            product_urls = [u.strip() for u in form["product_links"].replace(",", "\n").split("\n") if u.strip().startswith("http")]
 
         products = scrape_all_products(product_urls) if product_urls else []
         content = generate_moodboard_content(form)
 
-        # Count how many product slots filled
         filled = len([p for p in products if p])
         ai_slots = max(0, 6 - filled)
         ai_paths = generate_images(content["image_prompts"][:ai_slots], form) if ai_slots > 0 else []
 
-        # Merge: products first, AI fills remaining slots
         image_paths = []
         ai_index = 0
         for i in range(6):
