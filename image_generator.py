@@ -31,10 +31,9 @@ def generate_single_image(prompt: str, index: int) -> tuple:
         pred = resp.json()
         pred_id = pred["id"]
         print(f"Image {index+1} submitted: {pred_id}")
-
         poll_headers = {"Authorization": f"Token {REPLICATE_KEY}"}
         for attempt in range(40):
-            time.sleep(1.5)
+            time.sleep(2)
             poll = requests.get(
                 f"https://api.replicate.com/v1/predictions/{pred_id}",
                 headers=poll_headers, timeout=15
@@ -43,7 +42,6 @@ def generate_single_image(prompt: str, index: int) -> tuple:
             result = poll.json()
             status = result.get("status")
             print(f"Image {index+1} poll {attempt+1}: {status}")
-
             if status == "succeeded":
                 output = result.get("output")
                 if not output:
@@ -60,7 +58,6 @@ def generate_single_image(prompt: str, index: int) -> tuple:
             elif status == "failed":
                 print(f"Image {index+1} failed: {result.get('error')}")
                 return (index, None)
-
         return (index, None)
     except Exception as e:
         print(f"Image {index+1} exception: {e}")
@@ -72,7 +69,7 @@ def generate_images(prompts: list, form: dict = None) -> list:
         print(f"\n--- Generating image {i+1}/6 ---")
         idx, path = generate_single_image(prompt, i)
         results[idx] = path
-        time.sleep(1)  # 1s gap between requests to avoid rate limit
+        time.sleep(2)
     success = sum(1 for r in results if r is not None)
     print(f"\nTotal images: {success}/6")
     while len(results) < 6:
