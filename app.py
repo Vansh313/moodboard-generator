@@ -32,7 +32,7 @@ def generate_moodboard():
             "product_links":  data.get("product_links", ""),
         }
 
-        if not form["designer_name"] or not form["design_style"]:
+        if not form["designer_name"] and not form["design_style"]:
             return jsonify({"error": "Missing designer_name or design_style"}), 400
 
         # Parse product links
