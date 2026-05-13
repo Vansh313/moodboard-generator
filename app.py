@@ -35,28 +35,20 @@ def generate_moodboard():
         if not form["designer_name"] or not form["design_style"]:
             return jsonify({"error": "Missing designer_name or design_style"}), 400
 
-        # Parse product links (one per line)
+        # Parse product links
         product_urls = []
         if form["product_links"]:
             product_urls = [u.strip() for u in form["product_links"].split("\n") if u.strip().startswith("http")]
 
-        # Scrape products (if any)
         products = scrape_all_products(product_urls) if product_urls else []
-
-        # Generate AI content
         content = generate_moodboard_content(form)
 
-        # Build final image list: product images fill slots first, AI fills rest
-        product_paths = []
-        for p in products:
-            product_paths.append(p["image_path"] if p else None)
+        # Count how many product slots filled
+        filled = len([p for p in products if p])
+        ai_slots = max(0, 6 - filled)
+        ai_paths = generate_images(content["image_prompts"][:ai_slots], form) if ai_slots > 0 else []
 
-        # How many AI images do we need?
-        ai_slots = max(0, 6 - len([p for p in products if p]))
-        ai_prompts = content["image_prompts"][:ai_slots]
-        ai_paths = generate_images(ai_prompts, form) if ai_slots > 0 else []
-
-        # Merge: product slots first, then AI
+        # Merge: products first, AI fills remaining slots
         image_paths = []
         ai_index = 0
         for i in range(6):
