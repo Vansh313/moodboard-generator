@@ -1,17 +1,18 @@
 import os
 import uuid
 import requests
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 TEMP_DIR = "temp_images"
 os.makedirs(TEMP_DIR, exist_ok=True)
-
 REPLICATE_KEY = os.environ.get("REPLICATE_KEY", "")
 
 def generate_single_image(prompt: str, index: int) -> tuple:
     headers = {
         "Authorization": f"Token {REPLICATE_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Prefer": "wait"
     }
     payload = {
         "version": "black-forest-labs/flux-schnell",
@@ -24,34 +25,44 @@ def generate_single_image(prompt: str, index: int) -> tuple:
         }
     }
     try:
+        # Use "Prefer: wait" header — Replicate waits and returns result directly
         resp = requests.post("https://api.replicate.com/v1/predictions",
-                           json=payload, headers=headers, timeout=30)
+                           json=payload, headers=headers, timeout=60)
         resp.raise_for_status()
-        prediction = resp.json()
-        pred_id = prediction["id"]
+        result = resp.json()
 
-        # Poll for result
-        for _ in range(30):
-            import time
-            time.sleep(2)
-            poll = requests.get(f"https://api.replicate.com/v1/predictions/{pred_id}",
-                              headers=headers, timeout=15)
-            poll.raise_for_status()
-            result = poll.json()
-            if result["status"] == "succeeded":
-                img_url = result["output"][0]
-                img_resp = requests.get(img_url, timeout=30)
-                img_resp.raise_for_status()
-                filename = f"img_{index}_{uuid.uuid4().hex[:6]}.jpg"
-                filepath = os.path.join(TEMP_DIR, filename)
-                with open(filepath, "wb") as f:
-                    f.write(img_resp.content)
-                print(f"Image {index+1} saved: {filepath}")
-                return (index, filepath)
-            elif result["status"] == "failed":
-                print(f"Image {index+1} failed: {result.get('error')}")
+        # Should be succeeded immediately with Prefer: wait
+        if result.get("status") == "succeeded" and result.get("output"):
+            img_url = result["output"][0]
+        else:
+            # Fallback polling
+            pred_id = result["id"]
+            for _ in range(20):
+                time.sleep(1)
+                poll = requests.get(
+                    f"https://api.replicate.com/v1/predictions/{pred_id}",
+                    headers=headers, timeout=15)
+                poll.raise_for_status()
+                result = poll.json()
+                if result["status"] == "succeeded":
+                    img_url = result["output"][0]
+                    break
+                elif result["status"] == "failed":
+                    print(f"Image {index+1} failed")
+                    return (index, None)
+            else:
                 return (index, None)
-        return (index, None)
+
+        # Download the image
+        img_resp = requests.get(img_url, timeout=30)
+        img_resp.raise_for_status()
+        filename = f"img_{index}_{uuid.uuid4().hex[:6]}.jpg"
+        filepath = os.path.join(TEMP_DIR, filename)
+        with open(filepath, "wb") as f:
+            f.write(img_resp.content)
+        print(f"Image {index+1} saved: {filepath}")
+        return (index, filepath)
+
     except Exception as e:
         print(f"Image {index+1} error: {e}")
         return (index, None)
