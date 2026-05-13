@@ -2,7 +2,6 @@ import os
 import uuid
 import requests
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 TEMP_DIR = "temp_images"
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -12,71 +11,70 @@ def generate_single_image(prompt: str, index: int) -> tuple:
     headers = {
         "Authorization": f"Token {REPLICATE_KEY}",
         "Content-Type": "application/json",
-        "Prefer": "wait"
     }
     payload = {
         "version": "black-forest-labs/flux-schnell",
         "input": {
-            "prompt": prompt,
+            "prompt": prompt[:400],
             "num_outputs": 1,
             "aspect_ratio": "4:3",
             "output_format": "jpg",
-            "output_quality": 90
+            "output_quality": 85
         }
     }
     try:
-        # Use "Prefer: wait" header — Replicate waits and returns result directly
-        resp = requests.post("https://api.replicate.com/v1/predictions",
-                           json=payload, headers=headers, timeout=60)
+        resp = requests.post(
+            "https://api.replicate.com/v1/predictions",
+            json=payload, headers=headers, timeout=30
+        )
         resp.raise_for_status()
-        result = resp.json()
+        pred = resp.json()
+        pred_id = pred["id"]
+        print(f"Image {index+1} submitted: {pred_id}")
 
-        # Should be succeeded immediately with Prefer: wait
-        if result.get("status") == "succeeded" and result.get("output"):
-            img_url = result["output"][0]
-        else:
-            # Fallback polling
-            pred_id = result["id"]
-            for _ in range(20):
-                time.sleep(1)
-                poll = requests.get(
-                    f"https://api.replicate.com/v1/predictions/{pred_id}",
-                    headers=headers, timeout=15)
-                poll.raise_for_status()
-                result = poll.json()
-                if result["status"] == "succeeded":
-                    img_url = result["output"][0]
-                    break
-                elif result["status"] == "failed":
-                    print(f"Image {index+1} failed")
+        poll_headers = {"Authorization": f"Token {REPLICATE_KEY}"}
+        for attempt in range(40):
+            time.sleep(1.5)
+            poll = requests.get(
+                f"https://api.replicate.com/v1/predictions/{pred_id}",
+                headers=poll_headers, timeout=15
+            )
+            poll.raise_for_status()
+            result = poll.json()
+            status = result.get("status")
+            print(f"Image {index+1} poll {attempt+1}: {status}")
+
+            if status == "succeeded":
+                output = result.get("output")
+                if not output:
                     return (index, None)
-            else:
+                img_url = output[0] if isinstance(output, list) else output
+                img_resp = requests.get(img_url, timeout=30)
+                img_resp.raise_for_status()
+                filename = f"img_{index}_{uuid.uuid4().hex[:6]}.jpg"
+                filepath = os.path.join(TEMP_DIR, filename)
+                with open(filepath, "wb") as f:
+                    f.write(img_resp.content)
+                print(f"Image {index+1} saved ({len(img_resp.content)} bytes)")
+                return (index, filepath)
+            elif status == "failed":
+                print(f"Image {index+1} failed: {result.get('error')}")
                 return (index, None)
 
-        # Download the image
-        img_resp = requests.get(img_url, timeout=30)
-        img_resp.raise_for_status()
-        filename = f"img_{index}_{uuid.uuid4().hex[:6]}.jpg"
-        filepath = os.path.join(TEMP_DIR, filename)
-        with open(filepath, "wb") as f:
-            f.write(img_resp.content)
-        print(f"Image {index+1} saved: {filepath}")
-        return (index, filepath)
-
+        return (index, None)
     except Exception as e:
-        print(f"Image {index+1} error: {e}")
+        print(f"Image {index+1} exception: {e}")
         return (index, None)
 
 def generate_images(prompts: list, form: dict = None) -> list:
     results = [None] * 6
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        futures = {executor.submit(generate_single_image, p, i): i
-                   for i, p in enumerate(prompts[:6])}
-        for future in as_completed(futures):
-            idx, path = future.result()
-            results[idx] = path
+    for i, prompt in enumerate(prompts[:6]):
+        print(f"\n--- Generating image {i+1}/6 ---")
+        idx, path = generate_single_image(prompt, i)
+        results[idx] = path
+        time.sleep(1)  # 1s gap between requests to avoid rate limit
     success = sum(1 for r in results if r is not None)
-    print(f"Images generated: {success}/6")
+    print(f"\nTotal images: {success}/6")
     while len(results) < 6:
         results.append(None)
     return results
