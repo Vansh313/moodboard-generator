@@ -1,5 +1,6 @@
 import os, uuid, requests, re
 from urllib.parse import urlparse
+import base64
 
 TEMP_DIR = "temp_images"
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -44,21 +45,46 @@ def scrape_amazon(url):
         for pat in [r'"large":"(https://m\.media-amazon\.com/images/[^"]+)"', r'data-old-hires="(https://[^"]+)"', r'"hiRes":"(https://[^"]+)"']:
             i = re.search(pat, html)
             if i: img_url = i.group(1); break
-        return {"title": title or scrape_generic(url).get("title",""), "price": price, "image_url": img_url or scrape_generic(url).get("image_url","")}
+        if not title or not img_url:
+            fallback = scrape_generic(url)
+            title = title or fallback.get("title", "")
+            img_url = img_url or fallback.get("image_url", "")
+        return {"title": title, "price": price, "image_url": img_url}
     except: return scrape_generic(url)
 
 def remove_background(image_path):
-    if not REMOVEBG_KEY: return image_path
+    if not REMOVEBG_KEY:
+        print("No REMOVEBG_KEY, skipping bg removal")
+        return image_path
     try:
         with open(image_path, "rb") as f:
-            r = requests.post("https://api.api4.ai/v1/background-removal", files={"image": f}, headers={"Authorization": f"Bearer {REMOVEBG_KEY}"}, timeout=30)
+            r = requests.post(
+                "https://demo.api4ai.cloud/img-bg-removal/v1/general/results",
+                files={"image": f},
+                headers={"Authorization": f"Bearer {REMOVEBG_KEY}"},
+                timeout=30
+            )
         if r.status_code == 200:
-            new_path = image_path.rsplit(".", 1)[0] + "_nobg.png"
-            with open(new_path, "wb") as f: f.write(r.content)
-            print(f"BG removed: {new_path}")
-            return new_path
+            resp = r.json()
+            # Response has base64 image
+            b64 = resp.get("results", [{}])[0].get("entities", [{}])[0].get("image", "")
+            if b64:
+                new_path = image_path.rsplit(".", 1)[0] + "_nobg.png"
+                with open(new_path, "wb") as f:
+                    f.write(base64.b64decode(b64))
+                print(f"BG removed: {new_path}")
+                return new_path
+            # Try URL response
+            url_result = resp.get("results", [{}])[0].get("entities", [{}])[0].get("image_url", "")
+            if url_result:
+                img_r = requests.get(url_result, timeout=20)
+                new_path = image_path.rsplit(".", 1)[0] + "_nobg.png"
+                with open(new_path, "wb") as f: f.write(img_r.content)
+                return new_path
+            print(f"BG removal: unexpected response format")
+            return image_path
         else:
-            print(f"BG removal failed: {r.status_code} {r.text[:100]}")
+            print(f"BG removal failed: {r.status_code} {r.text[:150]}")
             return image_path
     except Exception as e:
         print(f"BG removal error: {e}")
@@ -74,7 +100,7 @@ def download_product_image(image_url, index):
         print(f"Product image saved: {fp}")
         return fp
     except Exception as e:
-        print(f"Product image download error: {e}")
+        print(f"Product download error: {e}")
         return None
 
 def scrape_product(url, index):
@@ -94,8 +120,5 @@ def scrape_product(url, index):
 def scrape_all_products(urls):
     results = []
     for i, url in enumerate(urls[:6]):
-        if url and url.strip():
-            results.append(scrape_product(url.strip(), i))
-        else:
-            results.append(None)
+        results.append(scrape_product(url.strip(), i) if url and url.strip() else None)
     return results
