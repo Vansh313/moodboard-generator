@@ -1,4 +1,4 @@
-import os, uuid
+import os, uuid, requests, json
 from flask import Flask, request, jsonify, send_from_directory
 from claude_handler import generate_moodboard_content
 from image_generator import generate_images
@@ -10,26 +10,26 @@ OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def extract_logo_url(raw):
-    """Extract direct URL from Tally file upload field."""
     if not raw:
         return ""
     if isinstance(raw, str):
-        # Already a URL
+        raw = raw.strip()
         if raw.startswith("http"):
             return raw
-        # Try parsing as JSON array
         try:
-            import json
             parsed = json.loads(raw)
             if isinstance(parsed, list) and parsed:
-                return parsed[0].get("url", "")
+                item = parsed[0]
+                return item.get("url", "") if isinstance(item, dict) else ""
+            if isinstance(parsed, dict):
+                return parsed.get("url", "")
         except:
             pass
     if isinstance(raw, list) and raw:
         item = raw[0]
         if isinstance(item, dict):
             return item.get("url", "")
-        if isinstance(item, str):
+        if isinstance(item, str) and item.startswith("http"):
             return item
     if isinstance(raw, dict):
         return raw.get("url", "")
@@ -42,8 +42,12 @@ def generate_moodboard():
         if "client_name" not in data:
             return jsonify({"error": "Missing required fields"}), 400
 
-        logo_raw = data.get("logo_url", "") or data.get("designer_logo", "")
-        logo_url = extract_logo_url(logo_raw)
+        logo_url = extract_logo_url(data.get("logo_url", ""))
+        print(f"Logo URL extracted: '{logo_url}'")
+
+        # Parse product names
+        product_names_raw = data.get("product_names", "")
+        product_names = [n.strip() for n in product_names_raw.split("\n") if n.strip()] if product_names_raw else []
 
         form = {
             "client_name":    data.get("client_name", "Client"),
@@ -61,12 +65,18 @@ def generate_moodboard():
             "product_links":  data.get("product_links", ""),
         }
 
-        # Parse product links
+        # Parse product image URLs
         product_urls = []
         if form["product_links"]:
             product_urls = [u.strip() for u in form["product_links"].replace(",", "\n").split("\n") if u.strip().startswith("http")]
 
         products = scrape_all_products(product_urls) if product_urls else []
+
+        # Inject product names
+        for i, product in enumerate(products):
+            if product and i < len(product_names):
+                product["title"] = product_names[i]
+
         content = generate_moodboard_content(form)
 
         filled = len([p for p in products if p])
