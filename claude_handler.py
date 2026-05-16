@@ -10,7 +10,9 @@ def encode_image(image_path: str) -> tuple:
         with open(image_path, "rb") as f:
             data = base64.standard_b64encode(f.read()).decode("utf-8")
         ext = image_path.lower().split(".")[-1]
-        media_type = "image/png" if ext == "png" else "image/jpeg"
+        if ext == "png": media_type = "image/png"
+        elif ext == "webp": media_type = "image/webp"
+        else: media_type = "image/jpeg"
         return data, media_type
     except Exception as e:
         print(f"Image encode error: {e}")
