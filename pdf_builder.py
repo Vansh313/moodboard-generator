@@ -88,7 +88,7 @@ def draw_image_grid(c, image_paths, content, products=None, captions=None):
     c.setFillColor(MUTED_GOLD); c.rect(0,0,4,H,fill=1,stroke=0)
     draw_text(c,"MOODBOARD IMAGERY",L_MARGIN,H-25*mm,font="Helvetica",size=7,color=MUTED_GOLD)
     gap=3*mm; iw=(CONTENT_W-gap)/2; ih=(H-50*mm-2*gap)/3
-    captions=["SPACE OVERVIEW","KEY FURNITURE","MATERIAL DETAIL","LIGHTING MOOD","ACCENT STYLING","COLOUR IN SPACE"]
+    captions=captions or ["SPACE OVERVIEW","KEY FURNITURE","MATERIAL DETAIL","LIGHTING MOOD","ACCENT STYLING","COLOUR IN SPACE"]
     if not products: products=[]
 
     for i in range(6):
