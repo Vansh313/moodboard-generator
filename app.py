@@ -1,14 +1,67 @@
-import os, uuid
+import os, uuid, requests
 from flask import Flask, request, jsonify, send_from_directory
 from claude_handler import generate_moodboard_content, analyze_reference_images, generate_room_composite_prompt
 from image_generator import generate_images
 from pdf_builder import build_moodboard_pdf
-from drive_handler import download_reference_images
 from composite_generator import generate_composite_room
 
 app = Flask(__name__)
 OUTPUT_DIR = "outputs"
+TEMP_DIR = "temp_images"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
+
+HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+
+def download_tally_images(file_list) -> list:
+    """Download images from Tally CDN URLs."""
+    if not file_list:
+        return []
+    
+    # file_list can be a list of dicts with 'url' key, or list of URL strings
+    paths = []
+    for i, item in enumerate(file_list[:10]):
+        try:
+            if isinstance(item, dict):
+                url = item.get("url", "")
+            elif isinstance(item, str):
+                url = item
+            else:
+                continue
+            
+            if not url.startswith("http"):
+                continue
+            
+            print(f"Downloading reference image {i+1}: {url[:60]}")
+            r = requests.get(url, headers=HEADERS, timeout=30)
+            r.raise_for_status()
+            
+            if len(r.content) < 5000:
+                print(f"Image {i+1} too small, skipping")
+                continue
+            
+            # Detect format
+            content = r.content
+            if content[:8] == b'\x89PNG\r\n\x1a\n':
+                ext = '.png'
+            elif content[:3] == b'\xff\xd8\xff':
+                ext = '.jpg'
+            elif content[:4] == b'RIFF':
+                ext = '.webp'
+            else:
+                ext = '.jpg'
+            
+            fp = os.path.join(TEMP_DIR, f"ref_{i}_{uuid.uuid4().hex[:6]}{ext}")
+            with open(fp, 'wb') as f:
+                f.write(content)
+            print(f"Saved: {fp} ({len(content)} bytes)")
+            paths.append(fp)
+            
+        except Exception as e:
+            print(f"Download error for image {i+1}: {e}")
+    
+    print(f"Downloaded {len(paths)} reference images from Tally")
+    return paths
 
 @app.route("/generate-moodboard", methods=["POST"])
 def generate_moodboard():
@@ -30,24 +83,24 @@ def generate_moodboard():
             "mood_feel":      data.get("mood_feel", ""),
             "budget_range":   data.get("budget_range", ""),
             "logo_url":       data.get("logo_url", ""),
-            "drive_url":      data.get("drive_url", ""),
         }
 
-        # Step 1: Download reference images from Drive
-        reference_paths = []
+        # Get reference images from Tally file upload
+        reference_files = data.get("reference_images", [])
+        print(f"Reference files received: {reference_files}")
+
+        # Download all reference images
+        reference_paths = download_tally_images(reference_files) if reference_files else []
         reference_captions = []
 
-        if form["drive_url"]:
-            print("Downloading reference images from Drive...")
-            reference_paths = download_reference_images(form["drive_url"])
-            if reference_paths:
-                print(f"Analyzing {len(reference_paths)} images with Claude Vision...")
-                reference_captions = analyze_reference_images(reference_paths)
+        if reference_paths:
+            print(f"Analyzing {len(reference_paths)} images with Claude Vision...")
+            reference_captions = analyze_reference_images(reference_paths)
 
         form["has_reference_images"] = len(reference_paths) > 0
         form["reference_image_count"] = len(reference_paths)
 
-        # Step 2: Generate composite room if we have references
+        # Generate composite room if we have 2+ references
         composite_path = None
         if len(reference_paths) >= 2:
             print("Generating composite room with Flux Kontext...")
@@ -55,12 +108,12 @@ def generate_moodboard():
             print(f"Room prompt: {room_prompt}")
             composite_path = generate_composite_room(reference_paths, room_prompt)
 
-        # Step 3: Generate moodboard content
+        # Generate moodboard content
         content = generate_moodboard_content(form)
 
-        # Step 4: Build final image grid
-        # Slot 0: composite room (hero)
-        # Slots 1-N: individual client reference photos
+        # Build image grid
+        # Slot 0: composite room hero
+        # Slots 1-N: individual client references (up to 5)
         # Remaining: AI generated
         image_paths = []
         captions = []
@@ -69,25 +122,25 @@ def generate_moodboard():
             image_paths.append(composite_path)
             captions.append("YOUR ROOM VISION")
 
-        for i, path in enumerate(reference_paths[:5]):  # up to 5 refs after composite
+        for i, path in enumerate(reference_paths[:5]):
             image_paths.append(path)
             cap = reference_captions[i] if i < len(reference_captions) else f"CLIENT REFERENCE {i+1}"
             captions.append(cap)
 
-        # Fill remaining slots with AI images
+        # Fill remaining with AI
         ai_slots = max(0, 6 - len(image_paths))
-        standard_captions = ["SPACE OVERVIEW", "KEY FURNITURE", "MATERIAL DETAIL", "LIGHTING MOOD", "ACCENT STYLING", "COLOUR IN SPACE"]
+        standard_captions = ["SPACE OVERVIEW","KEY FURNITURE","MATERIAL DETAIL","LIGHTING MOOD","ACCENT STYLING","COLOUR IN SPACE"]
         if ai_slots > 0:
             ai_paths = generate_images(content.get("image_prompts", [])[:ai_slots], form)
             for i, path in enumerate(ai_paths):
+                if len(image_paths) >= 6:
+                    break
                 image_paths.append(path)
-                captions.append(standard_captions[len(image_paths) - (6 - ai_slots) - 1] if len(image_paths) <= 6 else "DETAIL")
+                captions.append(standard_captions[i % len(standard_captions)])
 
-        # Trim to 6
         image_paths = image_paths[:6]
         captions = captions[:6]
 
-        # Step 5: Build PDF
         filename = f"moodboard_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_DIR, filename)
         build_moodboard_pdf(form, content, image_paths, output_path, captions=captions)
@@ -104,8 +157,8 @@ def generate_moodboard():
             "client_email": form["client_email"],
             "client_name": form["client_name"],
             "project_name": form["project_name"],
-            "composite_generated": composite_path is not None,
             "reference_images_used": len(reference_paths),
+            "composite_generated": composite_path is not None,
         })
 
     except Exception as e:
