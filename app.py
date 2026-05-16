@@ -1,39 +1,13 @@
-import os, uuid, requests, json
+import os, uuid
 from flask import Flask, request, jsonify, send_from_directory
-from claude_handler import generate_moodboard_content
+from claude_handler import generate_moodboard_content, analyze_reference_images
 from image_generator import generate_images
 from pdf_builder import build_moodboard_pdf
-from product_scraper import scrape_all_products
+from drive_handler import download_reference_images
 
 app = Flask(__name__)
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-def extract_logo_url(raw):
-    if not raw:
-        return ""
-    if isinstance(raw, str):
-        raw = raw.strip()
-        if raw.startswith("http"):
-            return raw
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list) and parsed:
-                item = parsed[0]
-                return item.get("url", "") if isinstance(item, dict) else ""
-            if isinstance(parsed, dict):
-                return parsed.get("url", "")
-        except:
-            pass
-    if isinstance(raw, list) and raw:
-        item = raw[0]
-        if isinstance(item, dict):
-            return item.get("url", "")
-        if isinstance(item, str) and item.startswith("http"):
-            return item
-    if isinstance(raw, dict):
-        return raw.get("url", "")
-    return ""
 
 @app.route("/generate-moodboard", methods=["POST"])
 def generate_moodboard():
@@ -41,13 +15,6 @@ def generate_moodboard():
         data = request.get_json(force=True)
         if "client_name" not in data:
             return jsonify({"error": "Missing required fields"}), 400
-
-        logo_url = extract_logo_url(data.get("logo_url", ""))
-        print(f"Logo URL extracted: '{logo_url}'")
-
-        # Parse product names
-        product_names_raw = data.get("product_names", "")
-        product_names = [n.strip() for n in product_names_raw.split("\n") if n.strip()] if product_names_raw else []
 
         form = {
             "client_name":    data.get("client_name", "Client"),
@@ -61,40 +28,61 @@ def generate_moodboard():
             "materials":      data.get("materials", ""),
             "mood_feel":      data.get("mood_feel", ""),
             "budget_range":   data.get("budget_range", ""),
-            "logo_url":       logo_url,
+            "logo_url":       data.get("logo_url", ""),
             "product_links":  data.get("product_links", ""),
+            "drive_url":      data.get("drive_url", ""),
         }
 
-        # Parse product image URLs
-        product_urls = []
-        if form["product_links"]:
-            product_urls = [u.strip() for u in form["product_links"].replace(",", "\n").split("\n") if u.strip().startswith("http")]
+        # Step 1: Download client reference images from Google Drive
+        reference_paths = []
+        reference_captions = []
+        
+        if form["drive_url"]:
+            print(f"Downloading reference images from Drive...")
+            reference_paths = download_reference_images(form["drive_url"])
+            if reference_paths:
+                print(f"Analyzing {len(reference_paths)} reference images with Claude Vision...")
+                reference_captions = analyze_reference_images(reference_paths)
+                print(f"Reference captions: {reference_captions}")
 
-        products = scrape_all_products(product_urls) if product_urls else []
+        # Update form with reference info for Claude
+        form["has_reference_images"] = len(reference_paths) > 0
+        form["reference_image_count"] = len(reference_paths)
 
-        # Inject product names
-        for i, product in enumerate(products):
-            if product and i < len(product_names):
-                product["title"] = product_names[i]
-
+        # Step 2: Generate AI content (fewer AI image prompts if we have references)
         content = generate_moodboard_content(form)
 
-        filled = len([p for p in products if p])
-        ai_slots = max(0, 6 - filled)
-        ai_paths = generate_images(content["image_prompts"][:ai_slots], form) if ai_slots > 0 else []
+        # Step 3: Generate AI images for remaining slots
+        ai_slots = max(0, 6 - len(reference_paths))
+        ai_paths = generate_images(content.get("image_prompts", [])[:ai_slots], form) if ai_slots > 0 else []
 
+        # Step 4: Merge — client references first, AI fills remaining slots
         image_paths = []
         ai_index = 0
         for i in range(6):
-            if i < len(products) and products[i]:
-                image_paths.append(products[i]["image_path"])
+            if i < len(reference_paths) and reference_paths[i]:
+                image_paths.append(reference_paths[i])
             else:
                 image_paths.append(ai_paths[ai_index] if ai_index < len(ai_paths) else None)
                 ai_index += 1
 
+        # Step 5: Build captions — reference captions for client images, standard for AI
+        standard_captions = ["SPACE OVERVIEW", "KEY FURNITURE", "MATERIAL DETAIL", 
+                            "LIGHTING MOOD", "ACCENT STYLING", "COLOUR IN SPACE"]
+        final_captions = []
+        ref_index = 0
+        ai_cap_index = len(reference_paths)
+        for i in range(6):
+            if i < len(reference_paths):
+                cap = reference_captions[i] if i < len(reference_captions) else f"CLIENT REFERENCE {i+1}"
+                final_captions.append(cap)
+            else:
+                final_captions.append(standard_captions[i] if i < len(standard_captions) else f"DETAIL {i+1}")
+
+        # Step 6: Build PDF
         filename = f"moodboard_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_DIR, filename)
-        build_moodboard_pdf(form, content, image_paths, output_path, products=products)
+        build_moodboard_pdf(form, content, image_paths, output_path, captions=final_captions)
 
         base_url = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "http://localhost:5000")
         if not base_url.startswith("http"):
@@ -108,6 +96,7 @@ def generate_moodboard():
             "client_email": form["client_email"],
             "client_name": form["client_name"],
             "project_name": form["project_name"],
+            "reference_images_used": len(reference_paths),
         })
 
     except Exception as e:

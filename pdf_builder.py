@@ -83,7 +83,7 @@ def draw_palette_page(c, content):
     draw_text(c,content.get("mood_title","").upper(),L_MARGIN,ty-7*mm,font="Helvetica-Bold",size=13,color=OFF_WHITE)
     c.showPage()
 
-def draw_image_grid(c, image_paths, content, products=None):
+def draw_image_grid(c, image_paths, content, products=None, captions=None):
     draw_background(c)
     c.setFillColor(MUTED_GOLD); c.rect(0,0,4,H,fill=1,stroke=0)
     draw_text(c,"MOODBOARD IMAGERY",L_MARGIN,H-25*mm,font="Helvetica",size=7,color=MUTED_GOLD)
@@ -138,13 +138,13 @@ def draw_materials_page(c, form, content):
     draw_text(c,f"{form.get('project_name','')}  ·  {form.get('client_name','')}  ·  Prepared by {form.get('designer_name','')}",W/2,11*mm,font="Helvetica",size=6.5,color=LIGHT_GREY,align="center")
     c.showPage()
 
-def build_moodboard_pdf(form, content, image_paths, output_path, products=None):
+def build_moodboard_pdf(form, content, image_paths, output_path, products=None, captions=None):
     c=canvas.Canvas(output_path,pagesize=A4)
     c.setTitle(f"{form.get('project_name','Moodboard')} — {form.get('client_name','')}")
     c.setAuthor(form.get("designer_name",""))
     draw_cover(c,form,content)
     draw_palette_page(c,content)
-    draw_image_grid(c,image_paths,content,products=products)
+    draw_image_grid(c,image_paths,content,products=products,captions=captions)
     draw_materials_page(c,form,content)
     c.save()
     print(f"PDF saved: {output_path}")
