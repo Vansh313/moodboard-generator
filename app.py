@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from claude_handler import generate_moodboard_content, analyze_reference_images, generate_room_composite_prompt
 from image_generator import generate_images
 from pdf_builder import build_moodboard_pdf
-from composite_generator import generate_composite_room, generate_room_angles
+from composite_generator import generate_composite_room, generate_room_angles, generate_supporting_renders
 from moodboard_page_builder import build_moodboard_page
 
 app = Flask(__name__)

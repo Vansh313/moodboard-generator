@@ -163,3 +163,55 @@ def generate_room_angles(reference_paths, room_prompt):
 
     print(f"\nGenerated {len(render_paths)} room renders")
     return render_paths
+
+import urllib.parse
+
+POLLINATIONS_PROMPTS = [
+    "zoomed into the sofa and seating area of this exact room, same materials and colors, interior design photography, warm lighting",
+    "close-up detail of the flooring and furniture legs in this exact room, material texture detail, interior photography",
+    "view of the storage and display cabinet wall in this exact room, same style, interior design photography",
+    "window corner of this exact room showing natural light and curtains, golden hour, interior photography",
+    "dining area of this exact room looking toward living space, same materials and palette, interior photography",
+]
+
+def generate_pollinations_image(prompt, reference_url=None, index=0):
+    """Generate image using Pollinations.ai - completely free."""
+    try:
+        if reference_url:
+            full_prompt = f"{prompt}. Style reference: photorealistic luxury interior, European contemporary, warm ivory and brass tones"
+        else:
+            full_prompt = prompt
+        
+        encoded = urllib.parse.quote(full_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width=800&height=600&seed={index*42}&nologo=true&enhance=true"
+        
+        print(f"Pollinations request {index}: {url[:80]}")
+        r = requests.get(url, timeout=60)
+        r.raise_for_status()
+        
+        if len(r.content) < 5000:
+            print(f"Pollinations image too small: {len(r.content)} bytes")
+            return None
+        
+        fp = os.path.join(TEMP_DIR, f"pollinations_{index}_{uuid.uuid4().hex[:6]}.jpg")
+        with open(fp, "wb") as f:
+            f.write(r.content)
+        print(f"Pollinations saved: {fp} ({len(r.content)} bytes)")
+        return fp
+    except Exception as e:
+        print(f"Pollinations error: {e}")
+        return None
+
+def generate_supporting_renders(base_room_path, room_prompt, count=5):
+    """Generate supporting room renders using Pollinations based on composite room style."""
+    renders = []
+    for i, angle_prompt in enumerate(POLLINATIONS_PROMPTS[:count]):
+        print(f"\n--- Pollinations render {i+1} ---")
+        full_prompt = f"{angle_prompt}. Room style: {room_prompt}. Photorealistic interior design photography, professional lighting."
+        path = generate_pollinations_image(full_prompt, base_room_path, index=i)
+        if path:
+            renders.append(path)
+        else:
+            print(f"Render {i+1} failed")
+    print(f"Generated {len(renders)} Pollinations renders")
+    return renders
