@@ -344,9 +344,11 @@ def build_moodboard_page(form, content, image_paths, captions, output_path):
     background: rgba(44,36,22,0.08);
   }}
 
-  @media print {
-    html, body { background: #C8B89A !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }{
+  @media print {{
     .download-btn {{ display: none; }}
+    * {{ -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }}
+    html, body {{ background: #C8B89A !important; }}
+    @page {{ margin: 0; }}
   }}
 </style>
 </head>
