@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from claude_handler import generate_moodboard_content, analyze_reference_images, generate_room_composite_prompt
 from image_generator import generate_images
 from pdf_builder import build_moodboard_pdf
-from composite_generator import generate_composite_room, generate_room_angles, generate_supporting_renders
+from composite_generator import generate_composite_room, generate_supporting_renders
 from moodboard_page_builder import build_moodboard_page
 
 app = Flask(__name__)
@@ -85,7 +85,9 @@ def generate_moodboard():
         if len(reference_paths) >= 2:
             print("Generating room angles with Flux Kontext...")
             room_prompt = generate_room_composite_prompt(form, reference_captions)
-            room_renders = generate_room_angles(reference_paths, room_prompt)
+            composite_result = generate_composite_room(reference_paths, room_prompt)
+            composite_path = composite_result[0] if isinstance(composite_result, tuple) else composite_result
+            supporting_renders = generate_supporting_renders(composite_path, room_prompt, count=5) if composite_path else []
 
         content = generate_moodboard_content(form)
 
