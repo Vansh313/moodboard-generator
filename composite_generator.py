@@ -149,7 +149,7 @@ def generate_room_angles(reference_paths, room_prompt):
         return render_paths
 
     # Generate 5 more angles from the base room
-    for i, angle_prompt in enumerate(ANGLE_PROMPTS[1:6], start=1):
+    for i, angle_prompt in enumerate(ANGLE_PROMPTS[1:3], start=1):
         print(f"\n--- Angle {i+1}: {angle_prompt[:50]}... ---")
         full_prompt = f"This is the same room. {angle_prompt}. Same materials: {room_prompt}. Keep all design elements consistent."
         angle_url = run_kontext_pass(base_data_url, base_data_url, full_prompt)
