@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from claude_handler import generate_moodboard_content, analyze_reference_images, generate_room_composite_prompt
 from image_generator import generate_images
 from pdf_builder import build_moodboard_pdf
-from composite_generator import generate_composite_room
+from composite_generator import generate_composite_room, generate_room_angles
 from moodboard_page_builder import build_moodboard_page
 
 app = Flask(__name__)
@@ -81,25 +81,29 @@ def generate_moodboard():
         form["has_reference_images"] = len(reference_paths) > 0
         form["reference_image_count"] = len(reference_paths)
 
-        composite_path = None
+        room_renders = []
         if len(reference_paths) >= 2:
-            print("Generating composite room...")
+            print("Generating room angles with Flux Kontext...")
             room_prompt = generate_room_composite_prompt(form, reference_captions)
-            composite_path = generate_composite_room(reference_paths, room_prompt)
+            room_renders = generate_room_angles(reference_paths, room_prompt)
 
         content = generate_moodboard_content(form)
+
+        angle_captions = [
+            "YOUR ROOM VISION",
+            "LIVING AREA DETAIL",
+            "MATERIAL CLOSE-UP",
+            "STORAGE & DISPLAY",
+            "LIGHT & MOOD",
+            "DINING PERSPECTIVE",
+        ]
 
         image_paths = []
         captions = []
 
-        if composite_path:
-            image_paths.append(composite_path)
-            captions.append("YOUR ROOM VISION")
-
-        for i, path in enumerate(reference_paths[:5]):
+        for i, path in enumerate(room_renders[:6]):
             image_paths.append(path)
-            cap = reference_captions[i] if i < len(reference_captions) else f"CLIENT REFERENCE {i+1}"
-            captions.append(cap)
+            captions.append(angle_captions[i] if i < len(angle_captions) else f"RENDER {i+1}")
 
         ai_slots = max(0, 6 - len(image_paths))
         standard_captions = ["SPACE OVERVIEW","KEY FURNITURE","MATERIAL DETAIL","LIGHTING MOOD","ACCENT STYLING","COLOUR IN SPACE"]
