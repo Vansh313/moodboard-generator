@@ -204,8 +204,7 @@ def generate_supporting_renders(base_room_path, room_prompt, count=5):
     renders = []
     style = f"photorealistic interior design photography, {room_prompt}, European contemporary, warm ivory and brass tones, professional lighting"
     for i in range(min(count, len(HF_PROMPTS))):
-        print(f"
---- HF render {i+1} ---")
+        print(f"--- HF render {i+1} ---")
         full_prompt = f"{HF_PROMPTS[i]}. {style}"
         path = generate_hf_image(full_prompt, index=i)
         if path:
