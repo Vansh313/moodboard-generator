@@ -154,7 +154,8 @@ def build_moodboard_page(form, content, image_paths, captions, output_path):
     box-shadow: 4px 6px 20px rgba(0,0,0,0.18);
   }}
 
-  .collage-item img {{
+  .collage-item img {
+    mix-blend-mode: multiply;{
     width: 100%;
     display: block;
   }}
