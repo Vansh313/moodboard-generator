@@ -173,7 +173,7 @@ def generate_hf_image(prompt, index=0):
         print("No HF_API_KEY")
         return None
     try:
-        url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+        url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
         headers = {"Authorization": f"Bearer {HF_API_KEY}"}
         payload = {"inputs": prompt, "parameters": {"width": 768, "height": 512, "num_inference_steps": 20}}
         print(f"HF render {index}: {prompt[:60]}...")
