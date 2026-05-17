@@ -143,7 +143,7 @@ def generate_moodboard():
             "client_name": form["client_name"],
             "project_name": form["project_name"],
             "reference_images_used": len(reference_paths),
-            "composite_generated": composite_path is not None,
+            "composite_generated": len(room_renders) > 0,
         })
 
     except Exception as e:
