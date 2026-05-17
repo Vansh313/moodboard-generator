@@ -81,40 +81,29 @@ def generate_moodboard():
         form["has_reference_images"] = len(reference_paths) > 0
         form["reference_image_count"] = len(reference_paths)
 
-        room_renders = []
+        composite_path = None
         if len(reference_paths) >= 2:
-            print("Generating room angles with Flux Kontext...")
+            print("Generating composite room with Flux Kontext...")
             room_prompt = generate_room_composite_prompt(form, reference_captions)
             composite_result = generate_composite_room(reference_paths, room_prompt)
             composite_path = composite_result[0] if isinstance(composite_result, tuple) else composite_result
-            supporting_renders = generate_supporting_renders(composite_path, room_prompt, count=5) if composite_path else []
 
         content = generate_moodboard_content(form)
-
-        angle_captions = [
-            "YOUR ROOM VISION",
-            "LIVING AREA DETAIL",
-            "MATERIAL CLOSE-UP",
-            "STORAGE & DISPLAY",
-            "LIGHT & MOOD",
-            "DINING PERSPECTIVE",
-        ]
 
         image_paths = []
         captions = []
 
-        for i, path in enumerate(room_renders[:6]):
-            image_paths.append(path)
-            captions.append(angle_captions[i] if i < len(angle_captions) else f"RENDER {i+1}")
+        # Slot 1: composite room
+        if composite_path:
+            image_paths.append(composite_path)
+            captions.append("YOUR ROOM VISION")
 
-        ai_slots = max(0, 6 - len(image_paths))
-        standard_captions = ["SPACE OVERVIEW","KEY FURNITURE","MATERIAL DETAIL","LIGHTING MOOD","ACCENT STYLING","COLOUR IN SPACE"]
-        if ai_slots > 0:
-            ai_paths = generate_images(content.get("image_prompts", [])[:ai_slots], form)
-            for i, path in enumerate(ai_paths):
-                if len(image_paths) >= 6: break
-                image_paths.append(path)
-                captions.append(standard_captions[i % len(standard_captions)])
+        # Slots 2-6: client reference photos
+        for i, path in enumerate(reference_paths):
+            if len(image_paths) >= 6: break
+            image_paths.append(path)
+            cap = reference_captions[i] if i < len(reference_captions) else f"REFERENCE {i+1}"
+            captions.append(cap)
 
         image_paths = image_paths[:6]
         captions = captions[:6]
